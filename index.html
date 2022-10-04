@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Real Time Chat Test</title>
+  </head>
+  <!-- <script src = "/socket.io/socket.io.js"></script> -->
+  <script
+    src="https://cdn.socket.io/4.5.0/socket.io.min.js"
+    integrity="sha384-7EyYLQZgWBi67fBtVxw60/OWl1kjsfrPFcaU0pp0nAh+i8FD068QogUvg85Ewy1k"
+    crossorigin="anonymous"
+  ></script>
+  <script>
+    //   const socket = io("http://localhost:3000");
+  </script>
+  <body>
+    Integrating Socket.io with Node.js and Express
+    <div>
+      <div>
+        <button id="connect">연결하기</button>
+      </div>
+      <div>
+        <label>FROM</label>
+        <input type="text" id="from" value="ill" />
+      </div>
+      <div>
+        <label>TO</label>
+        <input type="text" id="to" value="ill" />
+      </div>
+      <div>
+        <label>MSG</label>
+        <input type="text" id="msg" value="ill" />
+      </div>
+      <button id="transfer">전송하기</button>
+    </div>
+    <div>
+      <div>
+        <label>친구이름</label>
+        <input type="text" id="friendName" value="ill" />
+      </div>
+      <button id="add-friend">팔로우하기</button>
+      <button id="delete-friend">팔로우 취소하기</button>
+      <button id="get-friends">팔로잉 리스트보기</button>
+      <button id="get-followers">팔로워 리스트보기</button>
+    </div>
+    <div>---------------------------</div>
+    <div id="chat-container">채팅내역</div>
+  </body>
+  <script>
+    let socket;
+    function connectSocket() {
+      const url = "http://localhost:3000";
+      // const url = "http://127.0.0.1:3000";
+
+      socket = io(url, {
+        withCredentials: true,
+        auth: {
+          token: "test",
+        },
+        extraHeaders: {
+          // @TODO 유저아이디를 토큰화해서 헤더로 전송.
+          // 서버에서 헤더의 아이디를 가져와 로그인.
+          Authorization: fromInput.value,
+          // Authorization: "Bearer Authorization_token_test"
+        },
+      });
+
+      // socket.emit("add-user", {
+      //     userId: fromInput.value
+      // })
+      socket.on("is-online", (data) => {
+        console.log(`${data.userId}이 접속 하였습니다.`);
+      });
+
+      //   socket.on("online", (data) => {
+      //     console.log(`${data.userId}이 접속 하였습니다.`);
+      //   });
+
+      //   socket.on("offline", (data) => {
+      //     console.log(`${data.userId}이 로그아웃 하였습니다.`);
+      //   });
+
+      socket.on("is-offline", (data) => {
+        console.log(`${data.userId}이 로그아웃 하였습니다.`);
+      });
+    }
+
+    function createChatBox(text, chatContainer) {
+      const chat = document.createElement("div");
+      chat.textContent = text;
+      // chat.textContent = `${data.from} : ${data.msg}, ${new Date()}`;
+      chatContainer.appendChild(chat);
+    }
+
+    const connectBtn = document.getElementById("connect");
+
+    const fromInput = document.getElementById("from");
+    const toInput = document.getElementById("to");
+    const msgInput = document.getElementById("msg");
+
+    const transferBtn = document.getElementById("transfer");
+
+    const chatContainer = document.getElementById("chat-container");
+    // console.log(fromInput.value);
+    // console.log(toInput.value);
+    // console.log(msgInput.value);
+
+    connectBtn.addEventListener("click", () => {
+      console.log("btn 눌림");
+      connectSocket();
+
+      socket.on("dm", (data) => {
+        const text = `${data.from} : ${data.msg}, ${new Date()}`;
+
+        createChatBox(text, chatContainer);
+        // console.log("클라 dm 들어옴 :", data);
+      });
+    });
+
+    transferBtn.addEventListener("click", () => {
+      const data = {
+        from: fromInput.value,
+        to: toInput.value,
+        msg: msgInput.value,
+      };
+
+      const text = `${data.from} : ${data.msg}, ${new Date()}`;
+
+      createChatBox(text, chatContainer);
+
+      socket.emit("dm", data);
+    });
+
+    const addFriendBtn = document.getElementById("add-friend");
+    const friendNameInput = document.getElementById("friendName");
+
+    const getFriendsBtn = document.getElementById("get-friends");
+
+    // getFriendsBtn.addEventListener("click", () => {
+    //     // socket.emit
+    // })
+
+    addFriendBtn.addEventListener("click", () => {
+      const data = {
+        friendName: friendNameInput.value,
+      };
+      socket.emit("add-friend", data);
+    });
+  </script>
+</html>
