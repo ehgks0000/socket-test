@@ -1,0 +1,31 @@
+generator client {
+    provider        = "prisma-client-js"
+    previewFeatures = ["interactiveTransactions"]
+}
+
+datasource db {
+    provider = "mysql"
+    url      = env("DATABASE_URL")
+}
+
+model Chats {
+    id  Int @id @default(autoincrement()) @db.UnsignedInt
+    from String @db.VarChar(100)
+    to String @db.VarChar(100)
+    lastActivateAt DateTime @map("last_activate_at")
+
+    @@map("chats")
+}
+
+model Friends {
+    id  Int @id @default(autoincrement()) @db.UnsignedInt
+    userId String @db.VarChar(100)
+    friendId String @db.VarChar(100)
+    createdAt DateTime @default(now()) @map("created_at")
+    updatedAt        DateTime          @default(now()) @map("updated_at")
+    deletedAt        DateTime?         @map("deleted_at")
+
+    // @@index([userId, friendId], map: "user_friend_id")
+    @@unique([userId, friendId], map: "uk_user_friend_id")
+    @@map("friends")
+}

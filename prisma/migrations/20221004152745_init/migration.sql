@@ -1,0 +1,21 @@
+-- CreateTable
+CREATE TABLE `chats` (
+    `id` INTEGER UNSIGNED NOT NULL AUTO_INCREMENT,
+    `from` VARCHAR(100) NOT NULL,
+    `to` VARCHAR(100) NOT NULL,
+    `last_activate_at` DATETIME(3) NOT NULL,
+
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `friends` (
+    `id` INTEGER UNSIGNED NOT NULL AUTO_INCREMENT,
+    `userId` VARCHAR(100) NOT NULL,
+    `friendId` VARCHAR(100) NOT NULL,
+    `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `deleted_at` DATETIME(3) NULL,
+
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

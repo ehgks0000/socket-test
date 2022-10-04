@@ -1,8 +1,10 @@
 import http from "http";
-import { Server } from "socket.io";
+import { Server, Socket } from "socket.io";
 import express from "express";
 import cors from "cors";
 import * as redis from "redis";
+import PrismaClient from "./db";
+import { PrismaClientKnownRequestError } from "@prisma/client/runtime";
 
 const PORT = 3000;
 
@@ -32,24 +34,73 @@ const main = async () => {
     },
   });
 
+  const getFollowerFollowingList = async (
+    userId: string,
+    prismaClient: typeof PrismaClient
+    // prismaClient: TypePrismaClient
+  ) => {
+    const followings = prismaClient.friends.findMany({
+      where: { userId },
+      select: { friendId: true },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const followers = prismaClient.friends.findMany({
+      where: { friendId: userId },
+      select: { userId: true },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return Promise.all([followings, followers]).then(
+      ([followings, followers]) => {
+        const followingList = followings.map(({ friendId }) => friendId);
+        const followerList = followers.map(({ userId }) => userId);
+
+        return [...new Set([...followingList, ...followerList])];
+      }
+    );
+  };
+
+  const tellMyStatusToFriend = async (
+    list: string[],
+    socket: Socket,
+    userId: string,
+    event: string = "is-online"
+  ) => {
+    // function test(list: string) {
+    //   return new Promise((resolve, reject) => {
+    //     const status = client.hGet(list, "status");
+    //   });
+    // }
+    for (const l of list) {
+      const status = await client.hGet(l, "status");
+
+      if (status && status === "online") {
+        const socketId = await client.hGet(l, "socketId");
+
+        if (!socketId) {
+          continue;
+        }
+
+        socket.to(socketId).emit(event, { userId });
+      }
+    }
+    // list.map();
+
+    // return Promise.all([...list]);
+  };
+
   io.on("connection", async (socket) => {
     const userId = socket.handshake.headers.authorization;
     if (!userId) {
       throw new Error("No User");
     }
 
-    // socket.broadcast.emit("is-online", { userId });
-    socket.to("room").emit("is-online", { userId });
-    // io.sockets.emit("is-online", { userId });
+    const list = await getFollowerFollowingList(userId, PrismaClient);
+    console.log("list :", list);
 
-    // user.set(userId, socket.id);
-
-    // const userStatus = {
-    //     status: "online",
-    //     last_activated_at: new Date(),
-    //     socketId: socket.id
-    // }
-    // await client.set(userId, JSON.stringify(userStatus));
+    // 팔로워, 팔로잉 리스트에서 online인 유저에게만 로그인 상태 emit
+    await tellMyStatusToFriend(list, socket, userId, "is-online");
 
     await client.hSet(userId, [
       "status",
@@ -63,40 +114,44 @@ const main = async () => {
     // client.hSet(userId, ["name", "lee", "pw", "asdfasdf"])
 
     // @TODO 접속 시 친구 목록에게 상태 전송
-    const friendList = await client.lRange(`friends:${userId}`, 0, -1);
-    console.log(userId, friendList);
+    // const friendList = await client.lRange(`friends:${userId}`, 0, -1);
+    // console.log(userId, friendList);
 
-    for (const friendName of friendList) {
-      const friendStatus = await client.hGet(friendName, "status");
-      console.log(`${userId}의 친구 상태 : ${friendStatus}`);
-      if (!friendStatus || friendStatus !== "online") {
-        continue;
-      }
+    // for (const friendName of friendList) {
+    //   const friendStatus = await client.hGet(friendName, "status");
+    //   console.log(`${userId}의 친구 상태 : ${friendStatus}`);
+    //   if (!friendStatus || friendStatus !== "online") {
+    //     continue;
+    //   }
 
-      const friendSocketId = await client.hGet(friendName, "socketId");
-      if (!friendSocketId) {
-        throw new Error("No friendSocketId");
-      }
-      console.log("friendSocketId :", friendSocketId);
-      socket.to(friendSocketId).emit("online", { userId });
-    }
+    //   const friendSocketId = await client.hGet(friendName, "socketId");
+    //   if (!friendSocketId) {
+    //     throw new Error("No friendSocketId");
+    //   }
+    //   console.log("friendSocketId :", friendSocketId);
+    //   socket.to(friendSocketId).emit("online", { userId });
+    // }
 
     socket.on("add-friend", async ({ friendName }) => {
-      console.log("add friend :", userId, friendName);
-      if (userId !== friendName) {
-        client.lPush(`friends:${userId}`, friendName);
-        // client.EXISTS(friendName)가 0이면 없고 1이면 있음
-        if ((await client.EXISTS(friendName)) === 0) {
-          console.log(`No Friend User : ${friendName}`);
-          return;
-          // throw new Error(`No Friend User ${friendName}`);
-        }
-        // client.lRem()
+      //   console.log("add friend :", userId, friendName);
 
-        const friendList = await client.lRange(`friends:${userId}`, 0, -1);
-        console.log(userId, friendList);
-      } else {
+      if (userId === friendName) {
         console.log("자기 자신을 친구추가 불가능.");
+        return;
+      }
+      try {
+        await PrismaClient.friends.create({
+          data: {
+            userId,
+            friendId: friendName,
+          },
+        });
+      } catch (error) {
+        if (error instanceof PrismaClientKnownRequestError) {
+          if (error.code === "P2002") {
+            console.log(`${error?.meta?.target} is Duplicate`);
+          }
+        }
       }
     });
 
@@ -131,28 +186,34 @@ const main = async () => {
       // }
       // await client.set(userId, JSON.stringify(userStatus));
 
-      socket.broadcast.emit("is-offline", { userId });
+      const list = await getFollowerFollowingList(userId, PrismaClient);
+      console.log("list :", list);
+
+      // 팔로워, 팔로잉 리스트에서 online인 유저에게만 로그인 상태 emit
+      await tellMyStatusToFriend(list, socket, userId, "is-offline");
+
+      //   socket.broadcast.emit("is-offline", { userId });
       //   io.sockets.emit("is-offline", { userId });
       client.hSet(userId, ["status", "offline"]);
 
       // @TODO 접속 시 친구 목록에게 상태 전송
       // 나는 팔로우 안했지만 나를 팔로우한 유저에게 전송 어떻게?
-      const friendList = await client.lRange(`friends:${userId}`, 0, -1);
-      console.log(userId, friendList);
+      //   const friendList = await client.lRange(`friends:${userId}`, 0, -1);
+      //   console.log(userId, friendList);
 
-      for (const friendName of friendList) {
-        const friend = await client.get(friendName);
-        console.log(`${userId}의 친구 상태 : ${friend}`);
-        if (!friend) {
-          continue;
-        }
-        const parsedFriend = JSON.parse(friend);
-        if (parsedFriend && parsedFriend.status === "online") {
-          console.log("로그인 중인 친구 :", friendName);
-          // console.log("로그인 중인 친구 :", friend, parsedFriend)
-          socket.to(parsedFriend.socketId).emit("offline", { userId });
-        }
-      }
+      //   for (const friendName of friendList) {
+      //     const friend = await client.get(friendName);
+      //     console.log(`${userId}의 친구 상태 : ${friend}`);
+      //     if (!friend) {
+      //       continue;
+      //     }
+      //     const parsedFriend = JSON.parse(friend);
+      //     if (parsedFriend && parsedFriend.status === "online") {
+      //       console.log("로그인 중인 친구 :", friendName);
+      //       // console.log("로그인 중인 친구 :", friend, parsedFriend)
+      //       socket.to(parsedFriend.socketId).emit("offline", { userId });
+      //     }
+      //   }
     });
   });
 
