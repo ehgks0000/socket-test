@@ -30,6 +30,9 @@
         <label>MSG</label>
         <input type="text" id="msg" value="ill" />
       </div>
+      <button id="register">가입</button>
+      <button id="create-room">방만들기</button>
+      <button id="enter">입장</button>
       <button id="transfer">전송하기</button>
     </div>
     <div>
@@ -47,6 +50,7 @@
   </body>
   <script>
     let socket;
+    let roomId;
     function connectSocket() {
       const url = "http://localhost:3000";
       // const url = "http://127.0.0.1:3000";
@@ -64,23 +68,19 @@
         },
       });
 
-      // socket.emit("add-user", {
-      //     userId: fromInput.value
-      // })
       socket.on("is-online", (data) => {
         console.log(`${data.userId}이 접속 하였습니다.`);
       });
-
-      //   socket.on("online", (data) => {
-      //     console.log(`${data.userId}이 접속 하였습니다.`);
-      //   });
-
-      //   socket.on("offline", (data) => {
-      //     console.log(`${data.userId}이 로그아웃 하였습니다.`);
-      //   });
-
       socket.on("is-offline", (data) => {
         console.log(`${data.userId}이 로그아웃 하였습니다.`);
+      });
+
+      socket.on("room-list", ({ roomList }) => {
+        console.log("roomList :", roomList);
+      });
+
+      socket.on("join", ({ chats }) => {
+        console.log("chats :", chats);
       });
     }
 
@@ -98,6 +98,9 @@
     const msgInput = document.getElementById("msg");
 
     const transferBtn = document.getElementById("transfer");
+    const registerBtn = document.getElementById("register");
+    const createRoomBtn = document.getElementById("create-room");
+    const enterBtn = document.getElementById("enter");
 
     const chatContainer = document.getElementById("chat-container");
     // console.log(fromInput.value);
@@ -118,7 +121,9 @@
 
     transferBtn.addEventListener("click", () => {
       const data = {
-        from: fromInput.value,
+        // @TODO roomID 일단 하드코딩으로 1
+        roomId: 1,
+        // from: fromInput.value,
         to: toInput.value,
         msg: msgInput.value,
       };
@@ -128,6 +133,20 @@
       createChatBox(text, chatContainer);
 
       socket.emit("dm", data);
+    });
+
+    enterBtn.addEventListener("click", () => {
+      // @TODO 일단은 하드코딩으로 roomId 1로 넣어 둠.
+      socket.emit("join", { roomId: 1 });
+      // socket.emit("join", { to: toInput.value, roomId: 1 });
+    });
+
+    registerBtn.addEventListener("click", () => {
+      socket.emit("register", { name: fromInput.value });
+    });
+
+    createRoomBtn.addEventListener("click", () => {
+      // socket.emit("create_room", {});
     });
 
     const addFriendBtn = document.getElementById("add-friend");

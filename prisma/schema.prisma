@@ -8,24 +8,85 @@ datasource db {
     url      = env("DATABASE_URL")
 }
 
+model Users {
+    id  Int @id @default(autoincrement()) @db.UnsignedInt
+    name String @db.VarChar(100)
+    // followings Followings[]
+    myRooms Rooms[]
+    rooms UsersOnRooms[]
+    chats Chats[]
+    sending Dms[] @relation("receiver")
+    receiving Dms[] @relation("sender")
+
+    followedBy Follows[] @relation("following")
+    following  Follows[] @relation("follower")
+
+    @@map("users")
+}
+
+model Dms {
+    id  Int @id @default(autoincrement()) @db.UnsignedInt
+    message String @db.VarChar(1000)
+    sender    Users @relation("sender", fields: [senderId], references: [id])
+    senderId  Int @db.UnsignedInt
+    receiver   Users @relation("receiver", fields: [receiverId], references: [id])
+    receiverId Int @db.UnsignedInt
+
+    createdAt DateTime @default(now()) @map("created_at")
+    deletedAt        DateTime?         @map("deleted_at")
+
+    // @@id([senderId, receiverId])
+    @@map("dms")
+}
+model Rooms {
+    id  Int @id @default(autoincrement()) @db.UnsignedInt
+    title String? @db.VarChar(1000)
+    chats Chats[]
+    
+    owner Users @relation(fields: [ownerId], references: [id])
+    ownerId Int @db.UnsignedInt
+    
+    users UsersOnRooms[]
+    createdAt DateTime @default(now()) @map("created_at")
+    updatedAt        DateTime          @updatedAt @map("updated_at")
+    
+    @@map("rooms")
+}
+
+model UsersOnRooms {
+  user       Users     @relation(fields: [userId], references: [id])
+  userId     Int @db.UnsignedInt @map("user_id")// relation scalar field (used in the `@relation` attribute above)
+  room   Rooms @relation(fields: [roomId], references: [id])
+  roomId Int @db.UnsignedInt @map("room_id")// relation scalar field (used in the `@relation` attribute above)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@id([userId, roomId])
+  @@map("users_on_rooms")
+}
+
 model Chats {
     id  Int @id @default(autoincrement()) @db.UnsignedInt
-    from String @db.VarChar(100)
-    to String @db.VarChar(100)
-    lastActivateAt DateTime @map("last_activate_at")
+    message String @db.VarChar(1000)
+
+    author   Users @relation(fields: [authorId], references: [id])
+    authorId Int @db.UnsignedInt
+
+    room Rooms @relation(fields: [roomId], references: [id])
+    roomId Int @db.UnsignedInt
+
+    createdAt DateTime @default(now()) @map("created_at")
+    deletedAt        DateTime?         @map("deleted_at")
 
     @@map("chats")
 }
 
-model Friends {
-    id  Int @id @default(autoincrement()) @db.UnsignedInt
-    userId String @db.VarChar(100)
-    friendId String @db.VarChar(100)
-    createdAt DateTime @default(now()) @map("created_at")
-    updatedAt        DateTime          @default(now()) @map("updated_at")
-    deletedAt        DateTime?         @map("deleted_at")
+model Follows {
+  follower    Users @relation("follower", fields: [followerId], references: [id])
+  followerId  Int @db.UnsignedInt
+  following   Users @relation("following", fields: [followingId], references: [id])
+  followingId Int @db.UnsignedInt
+  createdAt DateTime @default(now()) @map("created_at")
 
-    // @@index([userId, friendId], map: "user_friend_id")
-    @@unique([userId, friendId], map: "uk_user_friend_id")
-    @@map("friends")
+  @@id([followerId, followingId])
+  @@map("follows")
 }
