@@ -1,4 +1,5 @@
 import http from "http";
+import "module-alias/register";
 import { Server, Socket } from "socket.io";
 import express from "express";
 import cors from "cors";
