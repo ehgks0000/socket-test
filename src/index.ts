@@ -1,19 +1,15 @@
-import http from "http";
 import "module-alias/register";
+import http from "http";
 import { Server, Socket } from "socket.io";
-import express, {
-  type NextFunction,
-  type Request,
-  type Response,
-} from "express";
+import express from "express";
 import cors from "cors";
 import * as redis from "redis";
-import PrismaClient from "./db";
+import PrismaClient from "@src/db";
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime";
-import { PORT, REDIS_URL, CLIENT_URL } from "./config";
+import { PORT, REDIS_URL, CLIENT_URL } from "@src/config";
 import { Rooms } from "@prisma/client";
-import { asyncHandler } from "./lib/async-handler";
-import { errorHandler } from "./lib/error-handler";
+import { asyncHandler } from "@src/lib/async-handler";
+import { errorHandler } from "@src/lib/error-handler";
 
 const main = async () => {
   const client = redis.createClient({ url: REDIS_URL });
@@ -21,6 +17,9 @@ const main = async () => {
   await client.connect();
 
   const app = express();
+
+  app.use(express.json());
+  app.use(express.urlencoded({extended: false}));
 
   app.use(
     cors({
@@ -44,11 +43,10 @@ const main = async () => {
   });
 
   // 유저 생성
-
-  app.get(
-    "/user/create",
+  app.post(
+    "/user",
     asyncHandler(async (req, res) => {
-      const name = req.query.name;
+      const name = req.body.name;
       if (!name) throw new Error("No name");
 
       const user = await PrismaClient.users.create({
@@ -166,11 +164,12 @@ const main = async () => {
   );
 
   // create dm / 보낼 때
-  app.get(
+  app.post(
     "/user/:id/dm/:receiverId",
     asyncHandler(async (req, res) => {
-      const _id = req.params.id;
-      const _receiverId = req.params.receiverId;
+      const _id = req.body.id;
+      const _receiverId = req.body.receiverId;
+      const message = (req.body.message as string) || "msg";
 
       if (!_id || !_receiverId) {
         throw new Error("No Id");
@@ -178,7 +177,7 @@ const main = async () => {
       const id = Number(_id);
       const receiverId = Number(_receiverId);
 
-      const message = (req.query.message as string) || "msg";
+      
 
       if (!id || !receiverId) {
         throw new Error("Not a Number");
@@ -237,10 +236,12 @@ const main = async () => {
   );
 
   // create room chat / 방 생성
-  app.get(
+  app.post(
     "/user/:id/room/create",
     asyncHandler(async (req, res) => {
       const _id = req.params.id;
+      // @TODO 하드코딩.
+      const title = (req.body.title as string) || "create-room";
 
       if (!_id) {
         throw new Error("No Id");
@@ -250,8 +251,7 @@ const main = async () => {
         throw new Error("Not a Number :userId");
       }
 
-      // @TODO 하드코딩.
-      const title = (req.query.title as string) || "create-room";
+      
 
       const room = await PrismaClient.rooms.create({
         data: {
@@ -274,8 +274,8 @@ const main = async () => {
 
   // room chat 참여 // room 참여
   // 카카오톡 오픈 채팅 들어가는 순간 최근 댓글 같이 불러오기.
-  app.get(
-    "/user/:id/room/:roomId/join",
+  app.post(
+    "/user/:id/room/:roomId",
     asyncHandler(async (req, res) => {
       const _id = req.params.id;
       const _roomId = req.params.roomId;
@@ -329,18 +329,74 @@ const main = async () => {
     })
   );
 
+  // get-my-follower
+  app.get("/user/follower", asyncHandler(async(req, res) => {
+    const id = req.body.id;
+    const followers = await PrismaClient.follows.findMany({
+      where:{
+        // my id
+        followingId: Number(id)
+      },
+      select:{
+        
+      }
+    })
+    res.json({followers})
+  }))
+  // get-my-following with count
+  app.get("/user/following", asyncHandler(async(req, res) => {
+    const id = req.body.id;
+    const take = Number(req.query.take as string) || 20;
+    const cursor = req.query.cursor as string;
+
+    const count = await PrismaClient.follows.count({
+      where:{
+        followerId: Number(id)
+      },
+      orderBy: {
+        createdAt: "desc"
+      },
+    })
+    const followings = await PrismaClient.follows.findMany({
+      where:{
+        followerId: Number(id)
+      },
+      orderBy: {
+        createdAt: "desc"
+      },
+      take,
+      ...(cursor && {
+        skip: 1,
+        cursor: {
+          followerId_followingId: {
+            followerId: Number(id),
+            followingId: Number(cursor),
+          }
+        }
+      })
+    });
+
+    const lastId = followings.at(-1)?.followingId || null
+
+    res.json({followings, count, lastId})
+  }))
+
   // add-following
-  app.get(
-    "/test/following",
+  app.post(
+    "/user/following",
     asyncHandler(async (req, res) => {
+
+      const _id = req.body.followerId
+      const followingId = req.body.followingId
+
       const following = await PrismaClient.follows.create({
         data: {
           // 내가 2번 유저를 팔로잉
 
           // 내 아이디
-          followerId: 1,
+          followerId: Number(_id),
           // 상대 아이디
-          followingId: 2,
+          followingId: Number(followingId),
         },
       });
 
@@ -349,18 +405,20 @@ const main = async () => {
   );
 
   // delete-following
-
-  app.get(
-    "/test/following-d",
+  app.delete(
+    "/user/following",
     asyncHandler(async (req, res) => {
+      const _id = req.body.followerId
+      const followingId = req.body.followingId
+
       const following = await PrismaClient.follows.delete({
         // 내 팔로잉 삭제
         where: {
           followerId_followingId: {
             // 상대 아이디
-            followingId: 2,
+            followingId: Number(followingId),
             // 내 아이디
-            followerId: 1,
+            followerId: Number(_id),
           },
         },
       });
@@ -369,18 +427,21 @@ const main = async () => {
   );
 
   // delete-follower
-  app.get(
-    "/test/follower-d",
+  app.delete(
+    "/user/follower",
     asyncHandler(async (req, res) => {
+      const followerId = req.body.followerId
+      const followingId = req.body.id
+
       const follower = await PrismaClient.follows.delete({
         where: {
           // 내 팔로워 삭제
           followerId_followingId: {
             // 상대 아이디
-            followerId: 2,
+            followerId: Number(followerId),
 
             // 내 아이디
-            followingId: 1,
+            followingId: Number(followingId),
           },
         },
       });
@@ -393,7 +454,7 @@ const main = async () => {
   app.get(
     "/rooms",
     asyncHandler(async (req, res) => {
-      const _take = req.query.take;
+      const _take = req.query.take as string;
       const take = Number(_take) || 20;
       const _cursor = req.query.cursor;
 
